@@ -73,8 +73,7 @@ try:
     col_tipo = encontrar_columna(df_campañas.columns, ['Official', 'Conversions'])
     col_spend = 'Spend (COP)'
 
-    # --- LIMPIEZA DE DATOS FINANCIEROS PARA LA GRÁFICA ---
-    # Quitamos símbolos de dólar y comas, y convertimos a número real
+    # Limpieza de datos financieros
     df_campañas[col_spend] = pd.to_numeric(
         df_campañas[col_spend].astype(str).str.replace(r'[$,]', '', regex=True), 
         errors='coerce'
@@ -83,7 +82,6 @@ try:
     # --- 4. GRÁFICO DE ÁRBOL (TREEMAP) ---
     st.header("📊 Distribución de Inversión")
     
-    # Filtramos para que solo intente graficar campañas que tengan gasto mayor a 0
     df_plot = df_campañas[df_campañas[col_spend] > 0]
     
     if not df_plot.empty:
@@ -94,6 +92,11 @@ try:
             color=col_spend,
             color_continuous_scale=['#d6b58e', '#5b3f8e'], 
             title="Inversión por Medio y Objetivo Estratégico"
+        )
+        
+        # AQUÍ ESTÁ LA MAGIA: Limpiamos el texto al pasar el cursor
+        fig.update_traces(
+            hovertemplate="<b>%{label}</b><br>Inversión: $%{value:,.0f}<extra></extra>"
         )
         
         fig.update_layout(
@@ -115,8 +118,6 @@ try:
         cols_finales = [col_medio, 'Campaign', col_tipo, col_res, col_cpa]
         nombres = {col_medio: 'Medio', 'Campaign': 'Campaña', col_tipo: 'Objetivo', col_res: 'Resultados', col_cpa: 'CPA'}
         
-        # Para la tabla, devolvemos el formato de la columna original si lo deseas, o la dejamos limpia. 
-        # En este caso mostramos el resto de variables.
         df_display = df_campañas[cols_finales].rename(columns=nombres)
         st.dataframe(df_display.sort_values(by='Medio'), use_container_width=True, hide_index=True)
 

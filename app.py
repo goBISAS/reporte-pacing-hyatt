@@ -73,27 +73,39 @@ try:
     col_tipo = encontrar_columna(df_campañas.columns, ['Official', 'Conversions'])
     col_spend = 'Spend (COP)'
 
+    # --- LIMPIEZA DE DATOS FINANCIEROS PARA LA GRÁFICA ---
+    # Quitamos símbolos de dólar y comas, y convertimos a número real
+    df_campañas[col_spend] = pd.to_numeric(
+        df_campañas[col_spend].astype(str).str.replace(r'[$,]', '', regex=True), 
+        errors='coerce'
+    ).fillna(0)
+
     # --- 4. GRÁFICO DE ÁRBOL (TREEMAP) ---
     st.header("📊 Distribución de Inversión")
     
-    # Creamos el Treemap: Tamaño por Gasto, Agrupado por Medio y Objetivo
-    fig = px.treemap(
-        df_campañas, 
-        path=[col_medio, col_tipo], 
-        values=col_spend,
-        color=col_spend,
-        color_continuous_scale=['#d6b58e', '#5b3f8e'], # Colores Hyatt
-        title="Inversión por Medio y Objetivo Estratégico"
-    )
+    # Filtramos para que solo intente graficar campañas que tengan gasto mayor a 0
+    df_plot = df_campañas[df_campañas[col_spend] > 0]
     
-    fig.update_layout(
-        margin=dict(t=50, l=10, r=10, b=10),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        font_color="white"
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
+    if not df_plot.empty:
+        fig = px.treemap(
+            df_plot, 
+            path=[col_medio, col_tipo], 
+            values=col_spend,
+            color=col_spend,
+            color_continuous_scale=['#d6b58e', '#5b3f8e'], 
+            title="Inversión por Medio y Objetivo Estratégico"
+        )
+        
+        fig.update_layout(
+            margin=dict(t=50, l=10, r=10, b=10),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font_color="white"
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("Aún no hay datos numéricos de gasto registrados para graficar.")
 
     # 5. TABLA DE DETALLES
     with st.expander("📝 Ver desglose detallado de campañas"):
@@ -103,6 +115,8 @@ try:
         cols_finales = [col_medio, 'Campaign', col_tipo, col_res, col_cpa]
         nombres = {col_medio: 'Medio', 'Campaign': 'Campaña', col_tipo: 'Objetivo', col_res: 'Resultados', col_cpa: 'CPA'}
         
+        # Para la tabla, devolvemos el formato de la columna original si lo deseas, o la dejamos limpia. 
+        # En este caso mostramos el resto de variables.
         df_display = df_campañas[cols_finales].rename(columns=nombres)
         st.dataframe(df_display.sort_values(by='Medio'), use_container_width=True, hide_index=True)
 

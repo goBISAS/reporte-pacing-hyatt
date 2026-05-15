@@ -46,6 +46,7 @@ try:
     col_medio = 'Platform' if 'Platform' in df_pacing.columns else df_pacing.columns[0]
     col_spend = 'Spend (COP)'
     col_tipo = encontrar_columna(df_pacing.columns, ['Official', 'Conversions'])
+    dia_actual = datetime.now().day
     
     df_campañas = df_pacing[
         (df_pacing['Campaign'].notna()) & 
@@ -57,7 +58,20 @@ try:
         errors='coerce'
     ).fillna(0)
 
-    # --- 3. CÁLCULO DEL TOTAL REAL ---
+    # --- 3. CÁLCULO DE PROMEDIOS DIARIOS POR MEDIO ---
+    # Calculamos el total por plataforma para poder sacar el promedio diario
+    resumen_plataformas = df_campañas.groupby(col_medio)[col_spend].sum()
+    
+    # Creamos un diccionario para renombrar los medios con su gasto diario
+    mapa_nombres = {}
+    for plataforma, total_gasto in resumen_plataformas.items():
+        gasto_diario = total_gasto / dia_actual
+        mapa_nombres[plataforma] = f"{plataforma} (${gasto_diario:,.0f}/día)"
+    
+    # Aplicamos el nuevo nombre al dataframe para la gráfica
+    df_campañas['Medio_Labels'] = df_campañas[col_medio].map(mapa_nombres)
+
+    # Cálculo del total general
     gasto_total_calculado = df_campañas[col_spend].sum()
     
     col_fecha = encontrar_columna(df_pacing.columns, ['Actualizacion', 'Pacing']) or 'Actualización Pacing'
@@ -72,9 +86,9 @@ try:
     with c2:
         st.metric("Inversión Ejecutada", f"${gasto_total_calculado:,.0f}")
     with c3:
-        st.metric("Día del Mes", f"{datetime.now().day}")
+        st.metric("Día del Mes", f"{dia_actual}")
 
-    st.info(f"📅 Última sincronización: {fecha_update} | *Total calculado automáticamente basado en campañas individuales.*")
+    st.info(f"📅 Sincronización: {fecha_update} | *Consumo diario calculado sobre {dia_actual} días.*")
     st.divider()
 
     # --- 5. GRÁFICO DE ÁRBOL (TREEMAP) ---
@@ -85,18 +99,16 @@ try:
     if not df_plot.empty:
         fig = px.treemap(
             df_plot, 
-            path=[col_medio, col_tipo], 
+            path=['Medio_Labels', col_tipo], # Usamos la nueva columna con el dato diario
             values=col_spend,
             color=col_spend,
             color_continuous_scale=['#d6b58e', '#5b3f8e'], 
-            title="Inversión por Medio y Objetivo Estratégico"
+            title="Inversión por Medio (con Promedio Diario) y Objetivo"
         )
         
-        # AQUÍ APLICAMOS LA MEJORA PARA MÓVILES
-        # texttemplate fuerza a que el valor siempre se muestre impreso en el recuadro
         fig.update_traces(
             texttemplate="<b>%{label}</b><br>$%{value:,.0f}",
-            hovertemplate="<b>%{label}</b><br>Inversión: $%{value:,.0f}<extra></extra>",
+            hovertemplate="<b>%{label}</b><br>Gasto Total: $%{value:,.0f}<extra></extra>",
             textposition="middle center"
         )
         
@@ -109,10 +121,10 @@ try:
         
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.warning("Aún no hay datos numéricos de gasto registrados para graficar.")
+        st.warning("Aún no hay datos para graficar.")
 
     # 6. TABLA DE DETALLES
-    with st.expander("📝 Ver desglose detallado de campañas"):
+    with st.expander("📝 Ver desglose detallado"):
         col_res = encontrar_columna(df_campañas.columns, ['Platform', 'Conversions'])
         col_cpa = encontrar_columna(df_campañas.columns, ['CPA'])
         
@@ -123,6 +135,6 @@ try:
         st.dataframe(df_display.sort_values(by='Medio'), use_container_width=True, hide_index=True)
 
 except Exception as e:
-    st.error(f"Error técnico en visualización: {e}")
+    st.error(f"Error técnico: {e}")
 
 st.caption(f"Hyatt Regency Cartagena | Strategic Analytics by goBIG")

@@ -43,27 +43,23 @@ try:
     df_pacing.columns = [str(c).strip() for c in df_pacing.columns]
 
     # --- 2. LIMPIEZA Y FILTRADO INICIAL ---
-    # Identificación de columnas
     col_medio = 'Platform' if 'Platform' in df_pacing.columns else df_pacing.columns[0]
     col_spend = 'Spend (COP)'
     col_tipo = encontrar_columna(df_pacing.columns, ['Official', 'Conversions'])
     
-    # Filtramos para tener solo campañas individuales (quitamos filas de TOTAL)
     df_campañas = df_pacing[
         (df_pacing['Campaign'].notna()) & 
         (~df_pacing['Campaign'].str.contains('TOTAL', na=False))
     ].copy()
 
-    # Convertimos la columna de gasto a número limpio (vital para la suma)
     df_campañas[col_spend] = pd.to_numeric(
         df_campañas[col_spend].astype(str).str.replace(r'[$,]', '', regex=True), 
         errors='coerce'
     ).fillna(0)
 
-    # --- 3. CÁLCULO DEL TOTAL REAL (Suma de las partes) ---
+    # --- 3. CÁLCULO DEL TOTAL REAL ---
     gasto_total_calculado = df_campañas[col_spend].sum()
     
-    # Buscamos la fecha de actualización
     col_fecha = encontrar_columna(df_pacing.columns, ['Actualizacion', 'Pacing']) or 'Actualización Pacing'
     fecha_update = df_pacing[col_fecha].dropna().iloc[-1]
     
@@ -74,7 +70,6 @@ try:
     with c1:
         st.metric("Presupuesto Mensual", f"{presupuesto_mensual}")
     with c2:
-        # Formateamos el número calculado con signo de peso y separadores
         st.metric("Inversión Ejecutada", f"${gasto_total_calculado:,.0f}")
     with c3:
         st.metric("Día del Mes", f"{datetime.now().day}")
@@ -97,8 +92,12 @@ try:
             title="Inversión por Medio y Objetivo Estratégico"
         )
         
+        # AQUÍ APLICAMOS LA MEJORA PARA MÓVILES
+        # texttemplate fuerza a que el valor siempre se muestre impreso en el recuadro
         fig.update_traces(
-            hovertemplate="<b>%{label}</b><br>Inversión: $%{value:,.0f}<extra></extra>"
+            texttemplate="<b>%{label}</b><br>$%{value:,.0f}",
+            hovertemplate="<b>%{label}</b><br>Inversión: $%{value:,.0f}<extra></extra>",
+            textposition="middle center"
         )
         
         fig.update_layout(

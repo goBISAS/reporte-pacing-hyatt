@@ -46,32 +46,31 @@ try:
     col_medio = 'Platform' if 'Platform' in df_pacing.columns else df_pacing.columns[0]
     col_spend = 'Spend (COP)'
     col_tipo = encontrar_columna(df_pacing.columns, ['Official', 'Conversions'])
-    dia_actual = datetime.now().day
     
     df_campañas = df_pacing[
         (df_pacing['Campaign'].notna()) & 
         (~df_pacing['Campaign'].str.contains('TOTAL', na=False))
     ].copy()
 
+    # Convertimos a número limpio
     df_campañas[col_spend] = pd.to_numeric(
         df_campañas[col_spend].astype(str).str.replace(r'[$,]', '', regex=True), 
         errors='coerce'
     ).fillna(0)
 
-    # --- 3. CÁLCULO DE PROMEDIOS DIARIOS POR MEDIO ---
-    # Calculamos el total por plataforma para poder sacar el promedio diario
+    # --- 3. CÁLCULO DE TOTALES ACUMULADOS POR MEDIO ---
+    # Sumamos todo el gasto por plataforma
     resumen_plataformas = df_campañas.groupby(col_medio)[col_spend].sum()
     
-    # Creamos un diccionario para renombrar los medios con su gasto diario
+    # Creamos un diccionario para renombrar los medios con su Gasto Total Acumulado
     mapa_nombres = {}
     for plataforma, total_gasto in resumen_plataformas.items():
-        gasto_diario = total_gasto / dia_actual
-        mapa_nombres[plataforma] = f"{plataforma} (${gasto_diario:,.0f}/día)"
+        mapa_nombres[plataforma] = f"{plataforma} (${total_gasto:,.0f})"
     
-    # Aplicamos el nuevo nombre al dataframe para la gráfica
+    # Aplicamos el nuevo nombre (Plataforma + Total) al dataframe
     df_campañas['Medio_Labels'] = df_campañas[col_medio].map(mapa_nombres)
 
-    # Cálculo del total general
+    # Cálculo del gasto total general
     gasto_total_calculado = df_campañas[col_spend].sum()
     
     col_fecha = encontrar_columna(df_pacing.columns, ['Actualizacion', 'Pacing']) or 'Actualización Pacing'
@@ -86,29 +85,29 @@ try:
     with c2:
         st.metric("Inversión Ejecutada", f"${gasto_total_calculado:,.0f}")
     with c3:
-        st.metric("Día del Mes", f"{dia_actual}")
+        st.metric("Día del Mes", f"{datetime.now().day}")
 
-    st.info(f"📅 Sincronización: {fecha_update} | *Consumo diario calculado sobre {dia_actual} días.*")
+    st.info(f"📅 Sincronización: {fecha_update} | *Totales calculados por plataforma a la fecha.*")
     st.divider()
 
     # --- 5. GRÁFICO DE ÁRBOL (TREEMAP) ---
-    st.header("📊 Distribución de Inversión")
+    st.header("📊 Distribución de Inversión Acumulada")
     
     df_plot = df_campañas[df_campañas[col_spend] > 0]
     
     if not df_plot.empty:
         fig = px.treemap(
             df_plot, 
-            path=['Medio_Labels', col_tipo], # Usamos la nueva columna con el dato diario
+            path=['Medio_Labels', col_tipo], # Usamos la etiqueta con el Gasto Total
             values=col_spend,
             color=col_spend,
             color_continuous_scale=['#d6b58e', '#5b3f8e'], 
-            title="Inversión por Medio (con Promedio Diario) y Objetivo"
+            title="Inversión Acumulada por Medio y Objetivo"
         )
         
         fig.update_traces(
             texttemplate="<b>%{label}</b><br>$%{value:,.0f}",
-            hovertemplate="<b>%{label}</b><br>Gasto Total: $%{value:,.0f}<extra></extra>",
+            hovertemplate="<b>%{label}</b><br>Inversión: $%{value:,.0f}<extra></extra>",
             textposition="middle center"
         )
         

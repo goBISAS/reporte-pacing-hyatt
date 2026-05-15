@@ -42,44 +42,47 @@ try:
     df_pacing = pd.read_csv(get_csv_url(url_pacing), skiprows=5)
     df_pacing.columns = [str(c).strip() for c in df_pacing.columns]
 
-    # 2. MÉTRICAS DE CABECERA
-    fila_total = df_pacing[df_pacing['Campaign'].str.contains('TOTAL', na=False)].iloc[0]
-    gasto_total = fila_total['Spend (COP)']
+    # --- 2. LIMPIEZA Y FILTRADO INICIAL ---
+    # Identificación de columnas
+    col_medio = 'Platform' if 'Platform' in df_pacing.columns else df_pacing.columns[0]
+    col_spend = 'Spend (COP)'
+    col_tipo = encontrar_columna(df_pacing.columns, ['Official', 'Conversions'])
     
+    # Filtramos para tener solo campañas individuales (quitamos filas de TOTAL)
+    df_campañas = df_pacing[
+        (df_pacing['Campaign'].notna()) & 
+        (~df_pacing['Campaign'].str.contains('TOTAL', na=False))
+    ].copy()
+
+    # Convertimos la columna de gasto a número limpio (vital para la suma)
+    df_campañas[col_spend] = pd.to_numeric(
+        df_campañas[col_spend].astype(str).str.replace(r'[$,]', '', regex=True), 
+        errors='coerce'
+    ).fillna(0)
+
+    # --- 3. CÁLCULO DEL TOTAL REAL (Suma de las partes) ---
+    gasto_total_calculado = df_campañas[col_spend].sum()
+    
+    # Buscamos la fecha de actualización
     col_fecha = encontrar_columna(df_pacing.columns, ['Actualizacion', 'Pacing']) or 'Actualización Pacing'
     fecha_update = df_pacing[col_fecha].dropna().iloc[-1]
     
+    # --- 4. VISUALIZACIÓN DE MÉTRICAS ---
     st.title("🏨 Dashboard de Rendimiento: Hyatt Regency")
     
     c1, c2, c3 = st.columns(3)
     with c1:
         st.metric("Presupuesto Mensual", f"{presupuesto_mensual}")
     with c2:
-        st.metric("Inversión Ejecutada", f"{gasto_total}")
+        # Formateamos el número calculado con signo de peso y separadores
+        st.metric("Inversión Ejecutada", f"${gasto_total_calculado:,.0f}")
     with c3:
         st.metric("Día del Mes", f"{datetime.now().day}")
 
-    st.info(f"📅 Última sincronización: {fecha_update}")
+    st.info(f"📅 Última sincronización: {fecha_update} | *Total calculado automáticamente basado en campañas individuales.*")
     st.divider()
 
-    # 3. FILTRADO PARA GRÁFICAS Y TABLAS
-    df_campañas = df_pacing[
-        (df_pacing['Campaign'].notna()) & 
-        (~df_pacing['Campaign'].str.contains('TOTAL', na=False))
-    ].copy()
-
-    # Identificación de columnas
-    col_medio = 'Platform' if 'Platform' in df_campañas.columns else df_campañas.columns[0]
-    col_tipo = encontrar_columna(df_campañas.columns, ['Official', 'Conversions'])
-    col_spend = 'Spend (COP)'
-
-    # Limpieza de datos financieros
-    df_campañas[col_spend] = pd.to_numeric(
-        df_campañas[col_spend].astype(str).str.replace(r'[$,]', '', regex=True), 
-        errors='coerce'
-    ).fillna(0)
-
-    # --- 4. GRÁFICO DE ÁRBOL (TREEMAP) ---
+    # --- 5. GRÁFICO DE ÁRBOL (TREEMAP) ---
     st.header("📊 Distribución de Inversión")
     
     df_plot = df_campañas[df_campañas[col_spend] > 0]
@@ -94,7 +97,6 @@ try:
             title="Inversión por Medio y Objetivo Estratégico"
         )
         
-        # AQUÍ ESTÁ LA MAGIA: Limpiamos el texto al pasar el cursor
         fig.update_traces(
             hovertemplate="<b>%{label}</b><br>Inversión: $%{value:,.0f}<extra></extra>"
         )
@@ -110,7 +112,7 @@ try:
     else:
         st.warning("Aún no hay datos numéricos de gasto registrados para graficar.")
 
-    # 5. TABLA DE DETALLES
+    # 6. TABLA DE DETALLES
     with st.expander("📝 Ver desglose detallado de campañas"):
         col_res = encontrar_columna(df_campañas.columns, ['Platform', 'Conversions'])
         col_cpa = encontrar_columna(df_campañas.columns, ['CPA'])

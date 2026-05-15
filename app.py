@@ -1,23 +1,23 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 from datetime import datetime
 
-# CONFIGURACIÓN DE PÁGINA (Identidad Hyatt Regency)
+# CONFIGURACIÓN DE PÁGINA
 st.set_page_config(
-    page_title="Hyatt Regency Cartagena - Control de Paid Media",
+    page_title="Hyatt Regency Cartagena - Analytics",
     page_icon="🏨",
     layout="wide"
 )
 
-# ESTILOS PERSONALIZADOS (Corrección de visibilidad y colores premium)
+# ESTILOS PERSONALIZADOS
 st.markdown("""
     <style>
     .main { background-color: #0d0d0d; }
-    /* Ajuste de color para métricas: Oro Hyatt para máxima visibilidad */
     [data-testid="stMetricValue"] { font-size: 32px; color: #d6b58e !important; font-weight: 700; }
-    [data-testid="stMetricLabel"] { color: #f5f5f5 !important; font-size: 18px; }
-    h1, h2 { color: #ffffff; font-family: 'Georgia', serif; letter-spacing: 1px; }
-    .stDataFrame { border: 1px solid #d6b58e; border-radius: 4px; }
+    [data-testid="stMetricLabel"] { color: #f5f5f5 !important; }
+    h1, h2, h3 { color: #ffffff; font-family: 'Georgia', serif; }
+    .stPlotlyChart { border: 1px solid #333; border-radius: 8px; padding: 10px; background-color: #1a1a1a; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -33,9 +33,6 @@ def encontrar_columna(lista_cols, palabras_clave):
 
 # --- CONFIGURACIÓN DE DATOS ---
 url_pacing = "https://docs.google.com/spreadsheets/d/1Ah5nzWzix7HXOhrLvRBRYRhHsZYX5tULKG9jF7sNer0/edit?gid=1262726872"
-cliente = "Hyatt Regency Cartagena"
-
-st.title(f"🏨 Dashboard de Rendimiento: {cliente}")
 
 try:
     # 1. CARGA DE DATOS
@@ -45,64 +42,71 @@ try:
     df_pacing = pd.read_csv(get_csv_url(url_pacing), skiprows=5)
     df_pacing.columns = [str(c).strip() for c in df_pacing.columns]
 
-    # 2. MÉTRICAS DE CABECERA (Luminosas)
+    # 2. MÉTRICAS DE CABECERA
     fila_total = df_pacing[df_pacing['Campaign'].str.contains('TOTAL', na=False)].iloc[0]
     gasto_total = fila_total['Spend (COP)']
     
     col_fecha = encontrar_columna(df_pacing.columns, ['Actualizacion', 'Pacing']) or 'Actualización Pacing'
     fecha_update = df_pacing[col_fecha].dropna().iloc[-1]
-    dias_hoy = datetime.now().day
-
+    
+    st.title("🏨 Dashboard de Rendimiento: Hyatt Regency")
+    
     c1, c2, c3 = st.columns(3)
     with c1:
         st.metric("Presupuesto Mensual", f"{presupuesto_mensual}")
     with c2:
         st.metric("Inversión Ejecutada", f"{gasto_total}")
     with c3:
-        st.metric("Día de Medición", f"{dias_hoy}")
+        st.metric("Día del Mes", f"{datetime.now().day}")
 
-    st.info(f"📅 Última sincronización de datos: {fecha_update}")
+    st.info(f"📅 Última sincronización: {fecha_update}")
     st.divider()
 
-    # 3. SECCIÓN DE RENDIMIENTO POR MEDIO (Agrupado)
-    st.header("🎯 Análisis por Medio y Campaña")
-    
+    # 3. FILTRADO PARA GRÁFICAS Y TABLAS
     df_campañas = df_pacing[
         (df_pacing['Campaign'].notna()) & 
         (~df_pacing['Campaign'].str.contains('TOTAL', na=False))
     ].copy()
 
-    if not df_campañas.empty:
-        # Buscamos columnas clave incluyendo la Columna A (Platform/Medio)
-        col_medio = 'Platform' if 'Platform' in df_campañas.columns else df_campañas.columns[0]
+    # Identificación de columnas
+    col_medio = 'Platform' if 'Platform' in df_campañas.columns else df_campañas.columns[0]
+    col_tipo = encontrar_columna(df_campañas.columns, ['Official', 'Conversions'])
+    col_spend = 'Spend (COP)'
+
+    # --- 4. GRÁFICO DE ÁRBOL (TREEMAP) ---
+    st.header("📊 Distribución de Inversión")
+    
+    # Creamos el Treemap: Tamaño por Gasto, Agrupado por Medio y Objetivo
+    fig = px.treemap(
+        df_campañas, 
+        path=[col_medio, col_tipo], 
+        values=col_spend,
+        color=col_spend,
+        color_continuous_scale=['#d6b58e', '#5b3f8e'], # Colores Hyatt
+        title="Inversión por Medio y Objetivo Estratégico"
+    )
+    
+    fig.update_layout(
+        margin=dict(t=50, l=10, r=10, b=10),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font_color="white"
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+    # 5. TABLA DE DETALLES
+    with st.expander("📝 Ver desglose detallado de campañas"):
         col_res = encontrar_columna(df_campañas.columns, ['Platform', 'Conversions'])
         col_cpa = encontrar_columna(df_campañas.columns, ['CPA'])
-        col_tipo = encontrar_columna(df_campañas.columns, ['Official', 'Conversions'])
         
-        # Selección y renombrado para reporte gerencial
-        cols_finales = [col_medio, 'Campaign']
-        nombres_renombrar = {col_medio: 'Medio', 'Campaign': 'Campaña'}
+        cols_finales = [col_medio, 'Campaign', col_tipo, col_res, col_cpa]
+        nombres = {col_medio: 'Medio', 'Campaign': 'Campaña', col_tipo: 'Objetivo', col_res: 'Resultados', col_cpa: 'CPA'}
         
-        if col_tipo:
-            cols_finales.append(col_tipo)
-            nombres_renombrar[col_tipo] = 'Objetivo'
-        if col_res:
-            cols_finales.append(col_res)
-            nombres_renombrar[col_res] = 'Resultados'
-        if col_cpa:
-            cols_finales.append(col_cpa)
-            nombres_renombrar[col_cpa] = 'Costo x Res.'
-            
-        df_display = df_campañas[cols_finales].rename(columns=nombres_renombrar)
-        
-        # Ordenamos por Medio para que queden agrupadas (Facebook, Google, etc.)
-        df_display = df_display.sort_values(by='Medio')
-        
-        st.dataframe(df_display, use_container_width=True, hide_index=True)
-    else:
-        st.warning(f"No se detectan tácticas activas para {cliente}.")
+        df_display = df_campañas[cols_finales].rename(columns=nombres)
+        st.dataframe(df_display.sort_values(by='Medio'), use_container_width=True, hide_index=True)
 
 except Exception as e:
-    st.error(f"Error de visualización: {e}")
+    st.error(f"Error técnico en visualización: {e}")
 
-st.caption(f"Hyatt Regency Cartagena | Strategic Pacing by goBIG | {datetime.now().strftime('%Y')}")
+st.caption(f"Hyatt Regency Cartagena | Strategic Analytics by goBIG")

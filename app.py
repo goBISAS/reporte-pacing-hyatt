@@ -62,7 +62,6 @@ url_base = "https://docs.google.com/spreadsheets/d/1Ah5nzWzix7HXOhrLvRBRYRhHsZYX
 url_pacing = get_csv_url_by_sheet(url_base, mes_seleccionado)
 
 try:
-    # LA BALA DE PLATA: dtype=str y fillna('') erradican los errores de float y NaN desde la raíz
     df_raw = pd.read_csv(url_pacing, header=None, dtype=str).fillna('')
     
     # 1. RADAR: Buscar la fila de encabezados (Donde está la palabra "Campaign")
@@ -73,28 +72,34 @@ try:
             break
     
     if idx_header is None:
-        st.error(f"No se encontró la tabla de campañas. Verifica que la pestaña '{mes_seleccionado}' exista y esté bien escrita.")
+        st.error(f"No se encontró la tabla de campañas. Verifica que la pestaña '{mes_seleccionado}' exista.")
         st.stop()
 
-    # 2. RADAR: Extraer el Presupuesto Mensual Aprobado
+    # 2. FRANCOTIRADOR: Extraer el Presupuesto Exacto (Coordenada 2:C)
     presupuesto_mensual = "$0"
-    for i in range(idx_header):
-        fila_lista = df_raw.iloc[i].tolist()
-        for j, celda in enumerate(fila_lista):
-            if 'approved budget' in celda.lower() or 'monthly budget' in celda.lower() or 'presupuesto' in celda.lower():
-                # Busca el valor en la siguiente celda no vacía a la derecha
-                for k in range(j + 1, len(fila_lista)):
-                    if fila_lista[k].strip() != '':
-                        presupuesto_mensual = fila_lista[k].strip()
-                        break
+    
+    # Intento Primario: Fila 2, Columna C (Índices 1, 2)
+    if len(df_raw) > 1 and len(df_raw.columns) > 2:
+        val_c2 = str(df_raw.iloc[1, 2]).strip()
+        if val_c2 not in ['', 'nan', 'none']:
+            presupuesto_mensual = val_c2
+
+    # Intento Secundario (Respaldo por si se mueve): Buscar específicamente "Approved"
+    if presupuesto_mensual == "$0":
+        for i in range(idx_header):
+            fila_lista = df_raw.iloc[i].tolist()
+            for j, celda in enumerate(fila_lista):
+                if 'approved' in celda.lower() or 'presupuesto' in celda.lower():
+                    for k in range(j + 1, len(fila_lista)):
+                        if fila_lista[k].strip() != '':
+                            presupuesto_mensual = fila_lista[k].strip()
+                            break
+                    break
+            if presupuesto_mensual != "$0":
                 break
-        if presupuesto_mensual != "$0":
-            break
 
     # 3. CONSTRUIR TABLA LIMPIA
     df_pacing = df_raw.iloc[idx_header + 1:].copy()
-    
-    # Nombrar las columnas (reparando vacíos para evitar KeyErrors)
     nombres_seguros = []
     for i, c in enumerate(df_raw.iloc[idx_header].tolist()):
         nombre = re.sub(r'\s+', ' ', str(c)).strip()
@@ -102,33 +107,34 @@ try:
         nombres_seguros.append(nombre)
     df_pacing.columns = nombres_seguros
 
-    # 4. IDENTIFICACIÓN DE COLUMNAS (Basado en la estructura exacta de tu foto)
-    col_camp = next((c for c in df_pacing.columns if 'campaign' in c.lower() or 'campaña' in c.lower()), df_pacing.columns[1])
+    # 4. FRANCOTIRADOR DE COLUMNAS (Mapeo exacto según tu foto)
+    col_camp = next((c for c in df_pacing.columns if 'campaign' in c.lower() or 'campaña' in c.lower()), df_pacing.columns[1] if len(df_pacing.columns) > 1 else df_pacing.columns[0])
     col_medio = next((c for c in df_pacing.columns if 'channel' in c.lower() or 'platform' in c.lower() or 'canal' in c.lower()), df_pacing.columns[0])
-    col_spend = next((c for c in df_pacing.columns if 'spend' in c.lower() or 'gasto' in c.lower() or 'cop' in c.lower()), df_pacing.columns[7])
-    col_tipo = next((c for c in df_pacing.columns if 'official' in c.lower() or 'conversions' in c.lower() or 'objetivo' in c.lower()), df_pacing.columns[15])
-    col_res = next((c for c in df_pacing.columns if 'platform' in c.lower() or 'resultados' in c.lower() or 'results' in c.lower()), df_pacing.columns[14])
-    col_cpa = next((c for c in df_pacing.columns if 'cpa' in c.lower()), df_pacing.columns[17])
-    col_fecha = next((c for c in df_pacing.columns if 'actualizaci' in c.lower() or 'pacing' in c.lower()), df_pacing.columns[-1])
+    col_spend = next((c for c in df_pacing.columns if 'spend' in c.lower() or 'gasto' in c.lower() or 'cop' in c.lower()), df_pacing.columns[7] if len(df_pacing.columns) > 7 else df_pacing.columns[-1])
+    col_tipo = next((c for c in df_pacing.columns if 'official' in c.lower() or 'conversions' in c.lower() or 'objetivo' in c.lower()), df_pacing.columns[15] if len(df_pacing.columns) > 15 else df_pacing.columns[-1])
+    col_res = next((c for c in df_pacing.columns if 'platform' in c.lower() or 'resultados' in c.lower() or 'results' in c.lower()), df_pacing.columns[14] if len(df_pacing.columns) > 14 else df_pacing.columns[-1])
+    col_cpa = next((c for c in df_pacing.columns if 'cpa' in c.lower()), df_pacing.columns[17] if len(df_pacing.columns) > 17 else df_pacing.columns[-1])
+    
+    # Francotirador a Columna S (Índice 18) para la fecha
+    col_fecha = next((c for c in df_pacing.columns if 'actualizaci' in c.lower() or 'pacing' in c.lower()), df_pacing.columns[18] if len(df_pacing.columns) > 18 else df_pacing.columns[-1])
 
-    # 5. LIMPIEZA TOTALMENTE A PRUEBA DE FALLOS
+    # 5. LIMPIEZA A PRUEBA DE FALLOS
     df_campañas = df_pacing.copy()
     
-    # Quitar filas vacías, de subtítulos repetidos y de "TOTAL"
     df_campañas = df_campañas[df_campañas[col_camp].str.strip() != '']
     df_campañas = df_campañas[~df_campañas[col_camp].str.upper().str.contains('TOTAL')]
     df_campañas = df_campañas[df_campañas[col_camp].str.lower() != 'campaign']
     
-    # Rellenar los espacios vacíos de Google y Meta (hacia abajo)
     df_campañas[col_medio] = df_campañas[col_medio].replace('', pd.NA).ffill().fillna('Sin Medio')
     df_campañas[col_tipo] = df_campañas[col_tipo].replace('', 'Sin Objetivo')
 
-    # Limpiar signos de dólar y letras del Gasto y convertir a número real
     df_campañas[col_spend] = df_campañas[col_spend].str.replace(r'[^\d.-]', '', regex=True)
     df_campañas[col_spend] = pd.to_numeric(df_campañas[col_spend], errors='coerce').fillna(0)
 
-    # 6. EXTRACCIÓN FECHA DE ACTUALIZACIÓN (De la última campaña registrada)
-    fechas_validas = df_campañas[col_fecha][df_campañas[col_fecha].str.strip() != '']
+    # 6. EXTRACCIÓN PRECISA DE FECHA DE ACTUALIZACIÓN
+    fechas_validas = df_campañas[col_fecha].astype(str).str.strip()
+    # Filtramos vacíos y nos aseguramos de no leer el nombre de la columna por error
+    fechas_validas = fechas_validas[(fechas_validas != '') & (~fechas_validas.str.lower().str.contains('pacing|actualiz'))]
     fecha_update = fechas_validas.iloc[-1] if not fechas_validas.empty else "N/D"
 
     # 7. CÁLCULOS PARA LA GRÁFICA Y ETIQUETAS

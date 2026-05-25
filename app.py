@@ -68,10 +68,9 @@ url_base = "https://docs.google.com/spreadsheets/d/1Ah5nzWzix7HXOhrLvRBRYRhHsZYX
 url_pacing = get_csv_url_by_sheet(url_base, mes_seleccionado)
 
 try:
-    # LECTURA DE RADAR
+    # 1. LECTURA DE RADAR
     df_raw = pd.read_csv(url_pacing, header=None)
     
-    # 1. RADAR: Buscar la cabecera de la tabla de campañas
     idx_header = None
     for i, row in df_raw.iterrows():
         valores_fila = row.dropna().astype(str).tolist()
@@ -83,7 +82,6 @@ try:
         st.error(f"No se encontró la fila de encabezados con la columna 'Campaign'. Verifica que la pestaña '{mes_seleccionado}' tenga los datos correctos.")
         st.stop()
 
-    # 2. RADAR: Buscar el Presupuesto
     presupuesto_mensual = "$0"
     for i, row in df_raw.iloc[:idx_header].iterrows():
         for col_idx, val in enumerate(row.dropna().astype(str)):
@@ -92,38 +90,60 @@ try:
                     presupuesto_mensual = row.iloc[col_idx + 1]
                 break
 
-    # 3. CONSTRUIR TABLA LIMPIA Y REPARAR ENCABEZADOS
+    # 2. LIMPIEZA EXTREMA DE ENCABEZADOS (Bypass del Bug de Google)
     df_pacing = df_raw.iloc[idx_header + 1:].copy()
+    columnas_crudas = df_raw.iloc[idx_header].astype(str).tolist()
     
-    # Usamos Expresiones Regulares (re) para limpiar saltos de línea (\n) y dobles espacios ocultos
-    df_pacing.columns = [re.sub(r'\s+', ' ', str(c)).strip() for c in df_raw.iloc[idx_header]]
+    columnas_limpias = []
+    for i, c in enumerate(columnas_crudas):
+        val = re.sub(r'\s+', ' ', c).strip()
+        if val.lower() in ['nan', 'none', '']:
+            val = f"Columna_Oculta_{i}" # Nombramos la columna que Google borró
+        columnas_limpias.append(val)
+        
+    df_pacing.columns = columnas_limpias
 
-    # Detección ultra-flexible de columnas
+    # 3. SONAR ESPACIAL: Búsqueda dinámica y por vecindario
     col_medio = 'Channel' if 'Channel' in df_pacing.columns else ('Platform' if 'Platform' in df_pacing.columns else df_pacing.columns[0])
     
-    # Búsqueda dinámica de la columna de Gasto por si tiene un nombre ligeramente distinto
-    col_spend = 'Spend (COP)' # Default
-    for c in df_pacing.columns:
+    col_spend = 'Spend (COP)' 
+    for i, c in enumerate(df_pacing.columns):
         if 'spend' in c.lower() or 'gasto' in c.lower() or 'inversión' in c.lower():
-            col_spend = c
-            break
-            
+            col_spend = c; break
+        # Si Google la borró, sabemos que está a la derecha del Budget Asignado
+        if 'assigned' in c.lower() and 'budget' in c.lower():
+            if i + 1 < len(df_pacing.columns): col_spend = df_pacing.columns[i+1]; break
+
     col_tipo = encontrar_columna(df_pacing.columns, ['Official', 'Conversions'])
+    if not col_tipo:
+        for i, c in enumerate(df_pacing.columns):
+            if 'platform' in c.lower() and 'conversions' in c.lower():
+                if i + 1 < len(df_pacing.columns): col_tipo = df_pacing.columns[i+1]; break
+
+    col_res = encontrar_columna(df_pacing.columns, ['Platform', 'Conversions'])
+    if not col_res:
+        for i, c in enumerate(df_pacing.columns):
+            if 'ctr' in c.lower():
+                if i + 1 < len(df_pacing.columns): col_res = df_pacing.columns[i+1]; break
+
+    col_cpa = encontrar_columna(df_pacing.columns, ['CPA'])
+    if not col_cpa:
+        for i, c in enumerate(df_pacing.columns):
+            if 'cpc' in c.lower():
+                if i + 1 < len(df_pacing.columns): col_cpa = df_pacing.columns[i+1]; break
     
-    # Filtro de filas y conversión segura
+    # 4. FILTRADO Y MATEMÁTICAS
     df_campañas = df_pacing[df_pacing['Campaign'].notna()].copy()
     df_campañas['Campaign'] = df_campañas['Campaign'].astype(str)
     
     df_campañas = df_campañas[
-        (~df_campañas['Campaign'].str.contains('TOTAL')) & 
-        (~df_campañas['Campaign'].str.contains('Total')) & 
+        (~df_campañas['Campaign'].str.contains('TOTAL', case=False)) & 
         (df_campañas['Campaign'] != 'Campaign')
     ].copy()
     
     df_campañas[col_medio] = df_campañas[col_medio].replace(['', ' ', 'nan', 'NaN'], pd.NA).ffill()
     df_campañas[col_spend] = pd.to_numeric(df_campañas[col_spend].astype(str).str.replace(r'[$,]', '', regex=True), errors='coerce').fillna(0)
 
-    # Agrupaciones
     resumen_plataformas = df_campañas.groupby(col_medio)[col_spend].sum()
     mapa_nombres = {plat: f"{plat} (${tot:,.0f})" for plat, tot in resumen_plataformas.items()}
     df_campañas['Medio_Labels'] = df_campañas[col_medio].map(mapa_nombres)
@@ -142,7 +162,7 @@ try:
         if mes_seleccionado == meses_disponibles[0]:
             st.metric("Día de Medición", f"Día {datetime.now().day}")
         else:
-            st.metric("Estado del Mes", "Cerrado / Completo")
+            st.metric("Estado del Mes", "Cerrado")
 
     st.success(f"✅ Sincronización exitosa con la pestaña [{mes_seleccionado}] | Último registro: {fecha_update}")
     st.divider()
@@ -158,9 +178,9 @@ try:
         st.warning("No se detectan datos de gasto para graficar en este periodo.")
 
     with st.expander("📝 Detalle de Campañas"):
-        col_res = encontrar_columna(df_campañas.columns, ['Platform', 'Conversions'])
-        col_cpa = encontrar_columna(df_campañas.columns, ['CPA'])
-        df_display = df_campañas[[col_medio, 'Campaign', col_tipo, col_res, col_cpa]].rename(columns={col_medio: 'Medio', 'Campaign': 'Campaña', col_tipo: 'Objetivo', col_res: 'Resultados', col_cpa: 'CPA'})
+        df_display = df_campañas[[col_medio, 'Campaign', col_tipo, col_res, col_cpa]].rename(
+            columns={col_medio: 'Medio', 'Campaign': 'Campaña', col_tipo: 'Objetivo', col_res: 'Resultados', col_cpa: 'CPA'}
+        )
         st.dataframe(df_display.sort_values(by='Medio'), use_container_width=True, hide_index=True)
 
 except Exception as e:

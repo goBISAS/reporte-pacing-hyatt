@@ -1,3 +1,4 @@
+# app.py (Hyatt Regency Cartagena V2.2)
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -67,23 +68,26 @@ url_base = "https://docs.google.com/spreadsheets/d/1Ah5nzWzix7HXOhrLvRBRYRhHsZYX
 url_pacing = get_csv_url_by_sheet(url_base, mes_seleccionado)
 
 try:
-    # LECTURA DE RADAR (Sin asumir filas fijas)
+    # LECTURA DE RADAR
     df_raw = pd.read_csv(url_pacing, header=None)
     
-    # 1. RADAR: Buscar la cabecera de la tabla de campañas
+    # 1. RADAR: Buscar la cabecera de la tabla de campañas de forma segura
     idx_header = None
     for i, row in df_raw.iterrows():
-        if row.astype(str).str.contains('Campaign|Campaña', case=False, na=False).any():
+        # Validamos convirtiendo a string de forma segura y directa
+        valores_fila = row.dropna().astype(str).tolist()
+        if any('Campaign' in val or 'Campaña' in val for val in valores_fila):
             idx_header = i
             break
     
     if idx_header is None:
-        raise ValueError("No se encontró la palabra 'Campaign'. ¿Hay espacios extra al final del nombre de la pestaña en Google Sheets?")
+        st.error(f"No se encontró la fila de encabezados con la columna 'Campaign'. Verifica que la pestaña '{mes_seleccionado}' tenga los datos correctos.")
+        st.stop()
 
     # 2. RADAR: Buscar el Presupuesto
     presupuesto_mensual = "$0"
     for i, row in df_raw.iloc[:idx_header].iterrows():
-        for col_idx, val in enumerate(row.astype(str)):
+        for col_idx, val in enumerate(row.dropna().astype(str)):
             if 'budget' in val.lower() or 'presupuesto' in val.lower():
                 if col_idx + 1 < len(row):
                     presupuesto_mensual = row.iloc[col_idx + 1]
@@ -98,58 +102,5 @@ try:
     col_spend = 'Spend (COP)'
     col_tipo = encontrar_columna(df_pacing.columns, ['Official', 'Conversions'])
     
-    # FILTRO ESTRICTO Y RELLENO (Armadura para celdas combinadas)
-    df_campañas = df_pacing[
-        (df_pacing['Campaign'].notna()) & 
-        (~df_pacing['Campaign'].str.contains('TOTAL', na=False, case=False)) & 
-        (df_pacing['Campaign'] != 'Campaign')
-    ].copy()
-    
-    df_campañas[col_medio] = df_campañas[col_medio].replace(['', ' ', 'nan', 'NaN'], pd.NA).ffill()
-    df_campañas[col_spend] = pd.to_numeric(df_campañas[col_spend].astype(str).str.replace(r'[$,]', '', regex=True), errors='coerce').fillna(0)
-
-    # Agrupaciones
-    resumen_plataformas = df_campañas.groupby(col_medio)[col_spend].sum()
-    mapa_nombres = {plat: f"{plat} (${tot:,.0f})" for plat, tot in resumen_plataformas.items()}
-    df_campañas['Medio_Labels'] = df_campañas[col_medio].map(mapa_nombres)
-    gasto_total_calculado = df_campañas[col_spend].sum()
-    
-    # Fecha
-    col_fecha = encontrar_columna(df_pacing.columns, ['Actualizacion', 'Pacing']) or 'Actualización Pacing'
-    fecha_update = df_pacing[col_fecha].dropna().iloc[-1] if not df_pacing[col_fecha].dropna().empty else "N/D"
-    
-    # --- INTERFAZ ---
-    st.title(f"🏨 Dashboard Gerencial: {mes_seleccionado.title()}")
-    
-    c1, c2, c3 = st.columns(3)
-    with c1: st.metric("Presupuesto Mensual", f"{presupuesto_mensual}")
-    with c2: st.metric("Inversión Ejecutada", f"${gasto_total_calculado:,.0f}")
-    with c3:
-        if mes_seleccionado == meses_disponibles[0]:
-            st.metric("Día de Medición", f"Día {datetime.now().day}")
-        else:
-            st.metric("Estado del Mes", "Cerrado / Completo")
-
-    st.success(f"✅ Datos extraídos de la pestaña [{mes_seleccionado}] | Sincronización: {fecha_update}")
-    st.divider()
-
-    st.header("📊 Distribución por Canal y Objetivo")
-    df_plot = df_campañas[df_campañas[col_spend] > 0]
-    if not df_plot.empty:
-        fig = px.treemap(df_plot, path=['Medio_Labels', col_tipo], values=col_spend, color=col_spend, color_continuous_scale=['#d6b58e', '#5b3f8e'])
-        fig.update_traces(texttemplate="<b>%{label}</b><br>$%{value:,.0f}", hovertemplate="<b>%{label}</b><br>Inversión: $%{value:,.0f}<extra></extra>", textposition="middle center")
-        fig.update_layout(margin=dict(t=10, l=10, r=10, b=10), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("No se detectan datos de gasto para graficar en este periodo.")
-
-    with st.expander("📝 Detalle de Campañas"):
-        col_res = encontrar_columna(df_campañas.columns, ['Platform', 'Conversions'])
-        col_cpa = encontrar_columna(df_campañas.columns, ['CPA'])
-        df_display = df_campañas[[col_medio, 'Campaign', col_tipo, col_res, col_cpa]].rename(columns={col_medio: 'Medio', 'Campaign': 'Campaña', col_tipo: 'Objetivo', col_res: 'Resultados', col_cpa: 'CPA'})
-        st.dataframe(df_display.sort_values(by='Medio'), use_container_width=True, hide_index=True)
-
-except Exception as e:
-    st.error(f"Error técnico de conexión: {e}")
-
-st.caption(f"Hyatt Regency Cartagena | Strategic Analytics by goBIG")
+    # Filtro de filas y conversión segura paso a paso (Solución al error Float/Lower)
+    df_campañas = df_pacing

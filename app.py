@@ -1,7 +1,9 @@
+# app.py (Hyatt Regency Cartagena V2.0)
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+import urllib.parse
 
 # CONFIGURACIÓN DE PÁGINA
 st.set_page_config(
@@ -10,7 +12,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# ESTILOS PREMIUM (Barra lateral y Branding)
+# ESTILOS PREMIUM
 st.markdown("""
     <style>
     .main { background-color: #0d0d0d; }
@@ -22,9 +24,29 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- FUNCIONES ---
-def get_csv_url(url):
-    return url.replace('/edit?gid=', '/export?format=csv&gid=').split('#')[0]
+# --- LOGICA HISTÓRICA DE MESES ---
+def obtener_meses_disponibles():
+    meses_es = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+    start_year, start_month = 2026, 5  # Mayo 2026 es nuestro punto de partida
+    now = datetime.now()
+    lista = []
+    ano, mes = start_year, start_month
+    while (ano < now.year) or (ano == now.year and mes <= now.month):
+        lista.append(f"{meses_es[mes-1]} {ano}")
+        if mes == 12:
+            mes = 1
+            ano += 1
+        else:
+            mes += 1
+    return list(reversed(lista))
+
+def get_csv_url_by_sheet(url, sheet_name):
+    try:
+        id_publicacion = url.split("/d/")[1].split("/")[0]
+        sheet_enc = urllib.parse.quote(sheet_name)
+        return f"https://docs.google.com/spreadsheets/d/{id_publicacion}/gviz/tq?tqx=out:csv&sheet={sheet_enc}"
+    except:
+        return url
 
 def encontrar_columna(lista_cols, palabras_clave):
     for col in lista_cols:
@@ -32,22 +54,24 @@ def encontrar_columna(lista_cols, palabras_clave):
             return col
     return None
 
-# --- SIDEBAR (IDENTIDAD) ---
+# --- SIDEBAR (IDENTIDAD Y FILTRO TEMPORAL) ---
+meses_disponibles = obtener_meses_disponibles()
 with st.sidebar:
     st.image("hyatt_logo.png", use_container_width=True)
     st.markdown("---")
     st.markdown("### Control de Paid Media")
     st.write("Propiedad: **Cartagena de Indias**")
-    st.info(f"Día actual: {datetime.now().day}")
+    mes_seleccionado = st.selectbox("📅 Seleccione el Mes de Reporte:", options=meses_disponibles)
 
-# --- LOGICA DE DATOS ---
-url_pacing = "https://docs.google.com/spreadsheets/d/1Ah5nzWzix7HXOhrLvRBRYRhHsZYX5tULKG9jF7sNer0/edit?gid=1262726872"
+# --- CONEXIÓN DINÁMICA ---
+url_base = "https://docs.google.com/spreadsheets/d/1Ah5nzWzix7HXOhrLvRBRYRhHsZYX5tULKG9jF7sNer0/"
+url_pacing = get_csv_url_by_sheet(url_base, mes_seleccionado)
 
 try:
-    df_header = pd.read_csv(get_csv_url(url_pacing), nrows=5, header=None)
+    df_header = pd.read_csv(url_pacing, nrows=5, header=None)
     presupuesto_mensual = df_header.iloc[1, 2] 
 
-    df_pacing = pd.read_csv(get_csv_url(url_pacing), skiprows=5)
+    df_pacing = pd.read_csv(url_pacing, skiprows=5)
     df_pacing.columns = [str(c).strip() for c in df_pacing.columns]
 
     col_medio = 'Platform' if 'Platform' in df_pacing.columns else df_pacing.columns[0]
@@ -57,7 +81,7 @@ try:
     df_campañas = df_pacing[(df_pacing['Campaign'].notna()) & (~df_pacing['Campaign'].str.contains('TOTAL', na=False))].copy()
     df_campañas[col_spend] = pd.to_numeric(df_campañas[col_spend].astype(str).str.replace(r'[$,]', '', regex=True), errors='coerce').fillna(0)
 
-    # CÁLCULO DE TOTALES Y ETIQUETAS
+    # Agrupación Contable
     resumen_plataformas = df_campañas.groupby(col_medio)[col_spend].sum()
     mapa_nombres = {plat: f"{plat} (${tot:,.0f})" for plat, tot in resumen_plataformas.items()}
     df_campañas['Medio_Labels'] = df_campañas[col_medio].map(mapa_nombres)
@@ -67,22 +91,24 @@ try:
     fecha_update = df_pacing[col_fecha].dropna().iloc[-1]
     
     # --- INTERFAZ ---
-    st.title("🏨 Dashboard Gerencial de Rendimiento")
+    st.title(f"🏨 Dashboard Gerencial: {mes_seleccionado.title()}")
     
     c1, c2, c3 = st.columns(3)
     with c1: st.metric("Presupuesto Mensual", f"{presupuesto_mensual}")
     with c2: st.metric("Inversión Ejecutada", f"${gasto_total_calculado:,.0f}")
-    with c3: st.metric("Día de Medición", f"{datetime.now().day}")
+    with c3:
+        if mes_seleccionado == meses_disponibles[0]: # Si es el mes más reciente en curso
+            st.metric("Día de Medición", f"Día {datetime.now().day}")
+        else:
+            st.metric("Estado del Mes", "Cerrado / Completo")
 
-    st.success(f"✅ Sincronizado con Google Sheets: {fecha_update}")
+    st.success(f"✅ Datos extraídos de la pestaña [{mes_seleccionado}] | Sincronización: {fecha_update}")
     st.divider()
 
     st.header("📊 Distribución por Canal y Objetivo")
     df_plot = df_campañas[df_campañas[col_spend] > 0]
-    
     if not df_plot.empty:
-        fig = px.treemap(df_plot, path=['Medio_Labels', col_tipo], values=col_spend, color=col_spend,
-                         color_continuous_scale=['#d6b58e', '#5b3f8e'])
+        fig = px.treemap(df_plot, path=['Medio_Labels', col_tipo], values=col_spend, color=col_spend, color_continuous_scale=['#d6b58e', '#5b3f8e'])
         fig.update_traces(texttemplate="<b>%{label}</b><br>$%{value:,.0f}", hovertemplate="<b>%{label}</b><br>$%{value:,.0f}<extra></extra>", textposition="middle center")
         fig.update_layout(margin=dict(t=10, l=10, r=10, b=10), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
         st.plotly_chart(fig, use_container_width=True)
@@ -94,6 +120,6 @@ try:
         st.dataframe(df_display.sort_values(by='Medio'), use_container_width=True, hide_index=True)
 
 except Exception as e:
-    st.error(f"Error: {e}")
+    st.error(f"Asegúrate de que exista la pestaña llamada exactamente '{mes_seleccionado}' en Google Sheets. Detalles: {e}")
 
 st.caption(f"Hyatt Regency Cartagena | Strategic Analytics by goBIG")

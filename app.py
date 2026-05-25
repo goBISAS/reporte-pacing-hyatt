@@ -75,15 +75,14 @@ try:
         st.error(f"No se encontró la tabla de campañas. Verifica que la pestaña '{mes_seleccionado}' exista.")
         st.stop()
 
-    # 2. LECTURA LINEAL (Gracias a tu estandarización)
+    # 2. LECTURA LINEAL EXCLUSIVA (Filtrado estricto para evitar el Monthly Budget de la fila 1)
     presupuesto_mensual = "$0"
     for i in range(idx_header):
         fila = df_raw.iloc[i].astype(str).tolist()
         for j, celda in enumerate(fila):
             celda_limpia = celda.lower().strip()
-            # Busca la etiqueta exacta en la celda
-            if 'approved budget' in celda_limpia or 'monthly budget' in celda_limpia or 'presupuesto' in celda_limpia:
-                # Toma el valor exactamente a la derecha
+            # Validamos que busque la palabra "approved" o "aprobado" para saltarse la fila de control roja
+            if 'approved' in celda_limpia or 'aprobado' in celda_limpia:
                 if j + 1 < len(fila) and fila[j+1].strip() not in ['', 'nan', '<na>']:
                     presupuesto_mensual = fila[j+1].strip()
                 break

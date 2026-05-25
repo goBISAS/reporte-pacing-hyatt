@@ -64,11 +64,11 @@ url_pacing = get_csv_url_by_sheet(url_base, mes_seleccionado)
 try:
     df_raw = pd.read_csv(url_pacing, header=None)
     
-    # 1. RADAR: Buscar encabezados
+    # 1. RADAR: Buscar encabezados (Protegido con Python puro)
     idx_header = None
     for i, row in df_raw.iterrows():
-        valores_fila = row.dropna().astype(str).tolist()
-        if any('Campaign' in val or 'Campaña' in val for val in valores_fila):
+        valores_fila = [str(x) for x in row.tolist()]
+        if any('campaign' in val.lower() or 'campaña' in val.lower() for val in valores_fila):
             idx_header = i
             break
     
@@ -76,30 +76,31 @@ try:
         st.error(f"No se encontró la tabla de campañas. Verifica que la pestaña '{mes_seleccionado}' sea correcta.")
         st.stop()
 
-    # 2. RADAR: Presupuesto (CORRECCIÓN QUIRÚRGICA AQUÍ)
+    # 2. RADAR: Presupuesto (Blindado con Python puro, CERO floats)
     presupuesto_mensual = "$0"
     for i, row in df_raw.iloc[:idx_header].iterrows():
-        valores_celdas = row.astype(str).tolist()
+        valores_celdas = [str(x) for x in row.tolist()]
         for col_idx, val in enumerate(valores_celdas):
             if 'budget' in val.lower() or 'presupuesto' in val.lower():
                 # Una vez encuentra la palabra, escanea hacia la derecha buscando el monto
                 for valor_derecha in valores_celdas[col_idx + 1:]:
-                    if valor_derecha.strip().lower() not in ['nan', 'none', '', 'null']:
+                    if valor_derecha.strip().lower() not in ['nan', 'none', '', 'null', '<na>']:
                         presupuesto_mensual = valor_derecha
                         break
+                break
 
     # 3. CONSTRUIR TABLA LIMPIA
     df_pacing = df_raw.iloc[idx_header + 1:].copy()
     
-    # Forzamos nombres únicos a todas las columnas para que nunca haya KeyErrors
+    # Forzamos nombres únicos a todas las columnas
     nombres_seguros = []
-    for i, c in enumerate(df_raw.iloc[idx_header]):
+    for i, c in enumerate(df_raw.iloc[idx_header].tolist()):
         nombre = re.sub(r'\s+', ' ', str(c)).strip()
-        if nombre.lower() in ['nan', 'none', '']: nombre = f"Columna_Oculta_{i}"
+        if nombre.lower() in ['nan', 'none', '', '<na>']: nombre = f"Columna_Oculta_{i}"
         nombres_seguros.append(nombre)
     df_pacing.columns = nombres_seguros
 
-    # 4. NAVEGACIÓN POR COORDENADAS (El fin de los KeyErrors)
+    # 4. NAVEGACIÓN POR COORDENADAS
     
     # Buscar Columna 'Campaign'
     col_camp = None

@@ -73,10 +73,10 @@ try:
             break
     
     if idx_header is None:
-        st.error(f"No se encontró la columna 'Campaign'. Verifica la pestaña '{mes_seleccionado}'.")
+        st.error(f"No se encontró la tabla de campañas. Verifica que la pestaña '{mes_seleccionado}' sea correcta.")
         st.stop()
 
-    # 2. RADAR: Buscar Presupuesto
+    # 2. RADAR: Presupuesto
     presupuesto_mensual = "$0"
     for i, row in df_raw.iloc[:idx_header].iterrows():
         for col_idx, val in enumerate(row.dropna().astype(str)):
@@ -85,77 +85,86 @@ try:
                     presupuesto_mensual = str(row.iloc[col_idx + 1])
                 break
 
-    # 3. LIMPIEZA DE ENCABEZADOS (Anti-Float/NaN)
+    # 3. CONSTRUIR TABLA LIMPIA
     df_pacing = df_raw.iloc[idx_header + 1:].copy()
-    columnas_crudas = df_raw.iloc[idx_header].tolist()
     
-    columnas_limpias = []
-    for i, c in enumerate(columnas_crudas):
-        val = re.sub(r'\s+', ' ', str(c)).strip() # str(c) bloquea el error de float
-        if val.lower() in ['nan', 'none', '']:
-            val = f"Columna_Oculta_{i}"
-        columnas_limpias.append(val)
-        
-    df_pacing.columns = columnas_limpias
+    # Forzamos nombres únicos a todas las columnas para que nunca haya KeyErrors
+    nombres_seguros = []
+    for i, c in enumerate(df_raw.iloc[idx_header]):
+        nombre = re.sub(r'\s+', ' ', str(c)).strip()
+        if nombre.lower() in ['nan', 'none', '']: nombre = f"Columna_Oculta_{i}"
+        nombres_seguros.append(nombre)
+    df_pacing.columns = nombres_seguros
 
-    # 4. IDENTIFICACIÓN DE COLUMNAS
-    col_medio = 'Channel' if 'Channel' in df_pacing.columns else ('Platform' if 'Platform' in df_pacing.columns else df_pacing.columns[0])
+    # 4. NAVEGACIÓN POR COORDENADAS (El fin de los KeyErrors)
     
-    col_spend = 'Spend (COP)' 
-    for i, c in enumerate(df_pacing.columns):
-        if 'spend' in str(c).lower() or 'gasto' in str(c).lower() or 'inversión' in str(c).lower():
-            col_spend = c; break
-        if 'assigned' in str(c).lower() and 'budget' in str(c).lower():
-            if i + 1 < len(df_pacing.columns): col_spend = df_pacing.columns[i+1]; break
+    # Buscar Columna 'Campaign' (Es el pilar central)
+    col_camp = None
+    for c in df_pacing.columns:
+        if 'campaign' in str(c).lower() or 'campaña' in str(c).lower(): col_camp = c; break
+    if not col_camp: col_camp = df_pacing.columns[1] if len(df_pacing.columns) > 1 else df_pacing.columns[0]
 
+    # Buscar Columna 'Medio/Platform'
+    col_medio = None
+    for c in df_pacing.columns:
+        if any(k in str(c).lower() for k in ['channel', 'platform', 'medio', 'canal']): col_medio = c; break
+    if not col_medio: col_medio = df_pacing.columns[0]
+
+    # Buscar Columna 'Spend' (Fallo a posición 7 asumiendo estructura estándar de BogoApts/Hyatt)
+    col_spend = None
+    for c in df_pacing.columns:
+        if any(k in str(c).lower() for k in ['spend', 'gasto', 'inversión', 'inversion', 'cop']): col_spend = c; break
+    if not col_spend: col_spend = df_pacing.columns[7] if len(df_pacing.columns) > 7 else df_pacing.columns[-1]
+
+    # Buscar Columna 'Objetivo/Official Conversions'
     col_tipo = None
     for c in df_pacing.columns:
-        if 'official' in str(c).lower() or 'conversions' in str(c).lower():
-            col_tipo = c; break
+        if any(k in str(c).lower() for k in ['official', 'conversions', 'objetivo']): col_tipo = c; break
+    if not col_tipo: col_tipo = df_pacing.columns[14] if len(df_pacing.columns) > 14 else df_pacing.columns[-1]
 
+    # Buscar Columna 'Resultados/Platform Conversions'
     col_res = None
     for c in df_pacing.columns:
-        if 'platform' in str(c).lower() and 'conversions' in str(c).lower():
-            col_res = c; break
+        if any(k in str(c).lower() for k in ['platform', 'resultados', 'results']): col_res = c; break
+    if not col_res: col_res = df_pacing.columns[13] if len(df_pacing.columns) > 13 else df_pacing.columns[-1]
 
+    # Buscar Columna 'CPA'
     col_cpa = None
     for c in df_pacing.columns:
-        if 'cpa' in str(c).lower():
-            col_cpa = c; break
+        if 'cpa' in str(c).lower(): col_cpa = c; break
+    if not col_cpa: col_cpa = df_pacing.columns[16] if len(df_pacing.columns) > 16 else df_pacing.columns[-1]
 
-    # 5. FILTRADO ESTRICTO ANTI-FLOAT
+    # 5. LIMPIEZA MATEMÁTICA INVENCIBLE
     df_campañas = df_pacing.copy()
     
-    # Forzamos la columna Campaign a ser string puro, llenando vacíos con texto vacío
-    df_campañas['Campaign'] = df_campañas['Campaign'].fillna('').astype(str)
+    # Forzamos campaña a texto
+    df_campañas[col_camp] = df_campañas[col_camp].fillna('').astype(str)
     
+    # Filtramos filas vacías, totales y subtítulos
     df_campañas = df_campañas[
-        (df_campañas['Campaign'] != '') &
-        (~df_campañas['Campaign'].str.upper().str.contains('TOTAL')) & 
-        (df_campañas['Campaign'] != 'Campaign')
+        (df_campañas[col_camp].str.strip() != '') &
+        (~df_campañas[col_camp].str.upper().str.contains('TOTAL')) & 
+        (df_campañas[col_camp].str.lower() != 'campaign') &
+        (df_campañas[col_camp].str.lower() != 'campaña')
     ].copy()
     
-    # Forzamos columnas de la gráfica a string puro para que Plotly no colapse
+    # Limpieza de nulos para gráficas
     df_campañas[col_medio] = df_campañas[col_medio].replace(['', ' ', 'nan', 'NaN'], pd.NA).ffill().fillna('Sin Medio').astype(str)
-    if col_tipo:
-        df_campañas[col_tipo] = df_campañas[col_tipo].fillna('Sin Objetivo').astype(str)
-    else:
-        col_tipo = 'Objetivo'
-        df_campañas[col_tipo] = 'Sin Objetivo'
+    df_campañas[col_tipo] = df_campañas[col_tipo].fillna('Sin Objetivo').astype(str)
 
-    # Matemáticas de Inversión
-    df_campañas[col_spend] = pd.to_numeric(df_campañas[col_spend].astype(str).str.replace(r'[$,]', '', regex=True), errors='coerce').fillna(0)
+    # Reemplazo estricto: Todo lo que NO sea número se convierte en vacío y luego en cero
+    df_campañas[col_spend] = pd.to_numeric(df_campañas[col_spend].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0)
 
+    # 6. CÁLCULOS
     resumen_plataformas = df_campañas.groupby(col_medio)[col_spend].sum()
     mapa_nombres = {plat: f"{plat} (${tot:,.0f})" for plat, tot in resumen_plataformas.items()}
     df_campañas['Medio_Labels'] = df_campañas[col_medio].map(mapa_nombres).astype(str)
     gasto_total_calculado = df_campañas[col_spend].sum()
     
+    # Fecha
     col_fecha = 'Actualización Pacing'
     for c in df_pacing.columns:
-        if 'actualizacion' in str(c).lower() or 'pacing' in str(c).lower():
-            col_fecha = c; break
-            
+        if 'actualizacion' in str(c).lower() or 'pacing' in str(c).lower(): col_fecha = c; break
     fecha_update = df_pacing[col_fecha].dropna().iloc[-1] if col_fecha in df_pacing.columns and not df_pacing[col_fecha].dropna().empty else "N/D"
     
     # --- INTERFAZ ---
@@ -181,18 +190,15 @@ try:
         fig.update_layout(margin=dict(t=10, l=10, r=10, b=10), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.warning("No se detectan datos de gasto para graficar en este periodo.")
+        st.warning("No se detectan datos de gasto mayores a $0 para graficar en este periodo.")
 
     with st.expander("📝 Detalle de Campañas"):
-        cols_mostrar = [col_medio, 'Campaign', col_tipo]
-        renombrar = {col_medio: 'Medio', 'Campaign': 'Campaña', col_tipo: 'Objetivo'}
-        if col_res: cols_mostrar.append(col_res); renombrar[col_res] = 'Resultados'
-        if col_cpa: cols_mostrar.append(col_cpa); renombrar[col_cpa] = 'CPA'
-        
-        df_display = df_campañas[cols_mostrar].rename(columns=renombrar)
+        df_display = df_campañas[[col_medio, col_camp, col_tipo, col_res, col_cpa]].rename(
+            columns={col_medio: 'Medio', col_camp: 'Campaña', col_tipo: 'Objetivo', col_res: 'Resultados', col_cpa: 'CPA'}
+        )
         st.dataframe(df_display.sort_values(by='Medio'), use_container_width=True, hide_index=True)
 
 except Exception as e:
-    st.error(f"Error técnico de visualización: {e}")
+    st.error(f"Error detectado: {e}")
 
 st.caption(f"Hyatt Regency Cartagena | Strategic Analytics by goBIG")

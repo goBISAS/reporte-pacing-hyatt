@@ -76,19 +76,22 @@ try:
         st.error(f"No se encontró la tabla de campañas. Verifica que la pestaña '{mes_seleccionado}' sea correcta.")
         st.stop()
 
-    # 2. ESCÁNER PROFUNDO: Presupuesto
+    # 2. EXTRACCIÓN DE PRESUPUESTO A PRUEBA DE BALAS
     presupuesto_mensual = "$0"
-    for i in range(min(10, len(df_raw))):  # Escaneamos las primeras 10 filas
-        for j in range(len(df_raw.columns)):
-            celda = str(df_raw.iloc[i, j]).lower()
-            if 'budget' in celda or 'presupuesto' in celda:
-                # Buscamos a la derecha el primer valor real
-                for k in range(j + 1, len(df_raw.columns)):
-                    valor_derecha = str(df_raw.iloc[i, k]).strip()
-                    if valor_derecha.lower() not in ['nan', 'none', '', '<na>', 'null']:
-                        presupuesto_mensual = valor_derecha
+    for i in range(idx_header):
+        fila_lista = df_raw.iloc[i].astype(str).tolist()
+        for j in range(len(fila_lista)):
+            celda = fila_lista[j].lower()
+            if 'approved budget' in celda or 'monthly budget' in celda or 'presupuesto' in celda:
+                # Buscar a la derecha estrictamente la primera celda que no esté vacía
+                for k in range(j + 1, len(fila_lista)):
+                    val = fila_lista[k].strip()
+                    if val.lower() not in ['nan', 'none', '', '<na>', 'null']:
+                        presupuesto_mensual = val
                         break
-                break
+                break # Romper búsqueda en fila
+        if presupuesto_mensual != "$0":
+            break # Romper búsqueda general
 
     # 3. CONSTRUIR TABLA LIMPIA
     df_pacing = df_raw.iloc[idx_header + 1:].copy()
@@ -130,14 +133,12 @@ try:
         if 'cpa' in str(c).lower(): col_cpa = c; break
     if not col_cpa: col_cpa = df_pacing.columns[16] if len(df_pacing.columns) > 16 else df_pacing.columns[-1]
 
-    # 5. ESCÁNER PROFUNDO: Fecha de Actualización
-    fecha_update = "N/D"
+    # 5. EXTRACCIÓN DE FECHA DE ACTUALIZACIÓN (Forzado a extraer solo fechas válidas)
+    col_fecha = None
     for c in df_pacing.columns:
-        if any(k in str(c).lower() for k in ['actualizaci', 'pacing', 'fecha']):
-            valores_validos = df_pacing[c].astype(str).replace(['nan', 'none', '', '<na>', 'NaN'], pd.NA).dropna()
-            if not valores_validos.empty:
-                fecha_update = valores_validos.iloc[-1]
-            break
+        if 'actualizaci' in str(c).lower() or 'pacing' in str(c).lower():
+            col_fecha = c; break
+    if not col_fecha: col_fecha = df_pacing.columns[-1]
 
     # 6. LIMPIEZA MATEMÁTICA
     df_campañas = df_pacing.copy()
@@ -153,6 +154,14 @@ try:
     df_campañas[col_medio] = df_campañas[col_medio].replace(['', ' ', 'nan', 'NaN'], pd.NA).ffill().fillna('Sin Medio').astype(str)
     df_campañas[col_tipo] = df_campañas[col_tipo].fillna('Sin Objetivo').astype(str)
     df_campañas[col_spend] = pd.to_numeric(df_campañas[col_spend].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0)
+
+    # Buscar la última fecha válida dentro de las filas de la campaña
+    fecha_update = "N/D"
+    valores_validos = df_campañas[col_fecha].astype(str).replace(['nan', 'none', '', '<na>', 'NaN'], pd.NA).dropna()
+    # Limpiamos para asegurarnos de no tomar títulos repetidos como fecha
+    valores_validos = valores_validos[~valores_validos.str.lower().str.contains('actualizaci|pacing')]
+    if not valores_validos.empty:
+        fecha_update = valores_validos.iloc[-1]
 
     # 7. CÁLCULOS
     resumen_plataformas = df_campañas.groupby(col_medio)[col_spend].sum()

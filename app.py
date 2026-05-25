@@ -92,7 +92,7 @@ try:
                     presupuesto_mensual = row.iloc[col_idx + 1]
                 break
 
-    # 3. CONSTRUIR TABLA LIMPIA Y REPARAR ENCABEZADOS (AQUÍ ESTÁ LA SOLUCIÓN)
+    # 3. CONSTRUIR TABLA LIMPIA Y REPARAR ENCABEZADOS
     df_pacing = df_raw.iloc[idx_header + 1:].copy()
     
     # Usamos Expresiones Regulares (re) para limpiar saltos de línea (\n) y dobles espacios ocultos
@@ -102,28 +102,4 @@ try:
     col_medio = 'Channel' if 'Channel' in df_pacing.columns else ('Platform' if 'Platform' in df_pacing.columns else df_pacing.columns[0])
     
     # Búsqueda dinámica de la columna de Gasto por si tiene un nombre ligeramente distinto
-    col_spend = 'Spend (COP)' # Default
-    for c in df_pacing.columns:
-        if 'spend' in c.lower() or 'gasto' in c.lower() or 'inversión' in c.lower():
-            col_spend = c
-            break
-            
-    col_tipo = encontrar_columna(df_pacing.columns, ['Official', 'Conversions'])
-    
-    # Filtro de filas y conversión segura
-    df_campañas = df_pacing[df_pacing['Campaign'].notna()].copy()
-    df_campañas['Campaign'] = df_campañas['Campaign'].astype(str)
-    
-    df_campañas = df_campañas[
-        (~df_campañas['Campaign'].str.contains('TOTAL')) & 
-        (~df_campañas['Campaign'].str.contains('Total')) & 
-        (df_campañas['Campaign'] != 'Campaign')
-    ].copy()
-    
-    df_campañas[col_medio] = df_campañas[col_medio].replace(['', ' ', 'nan', 'NaN'], pd.NA).ffill()
-    df_campañas[col_spend] = pd.to_numeric(df_campañas[col_spend].astype(str).str.replace(r'[$,]', '', regex=True), errors='coerce').fillna(0)
-
-    # Agrupaciones
-    resumen_plataformas = df_campañas.groupby(col_medio)[col_spend].sum()
-    mapa_nombres = {plat: f"{plat} (${tot:,.0f})" for plat, tot in resumen_plataformas.items()}
-    df_campañas['Med
+    col_spend = '

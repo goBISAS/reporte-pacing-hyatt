@@ -76,14 +76,17 @@ try:
         st.error(f"No se encontró la tabla de campañas. Verifica que la pestaña '{mes_seleccionado}' sea correcta.")
         st.stop()
 
-    # 2. RADAR: Presupuesto
+    # 2. RADAR: Presupuesto (CORRECCIÓN QUIRÚRGICA AQUÍ)
     presupuesto_mensual = "$0"
     for i, row in df_raw.iloc[:idx_header].iterrows():
-        for col_idx, val in enumerate(row.dropna().astype(str)):
+        valores_celdas = row.astype(str).tolist()
+        for col_idx, val in enumerate(valores_celdas):
             if 'budget' in val.lower() or 'presupuesto' in val.lower():
-                if col_idx + 1 < len(row):
-                    presupuesto_mensual = str(row.iloc[col_idx + 1])
-                break
+                # Una vez encuentra la palabra, escanea hacia la derecha buscando el monto
+                for valor_derecha in valores_celdas[col_idx + 1:]:
+                    if valor_derecha.strip().lower() not in ['nan', 'none', '', 'null']:
+                        presupuesto_mensual = valor_derecha
+                        break
 
     # 3. CONSTRUIR TABLA LIMPIA
     df_pacing = df_raw.iloc[idx_header + 1:].copy()
@@ -98,7 +101,7 @@ try:
 
     # 4. NAVEGACIÓN POR COORDENADAS (El fin de los KeyErrors)
     
-    # Buscar Columna 'Campaign' (Es el pilar central)
+    # Buscar Columna 'Campaign'
     col_camp = None
     for c in df_pacing.columns:
         if 'campaign' in str(c).lower() or 'campaña' in str(c).lower(): col_camp = c; break
@@ -110,7 +113,7 @@ try:
         if any(k in str(c).lower() for k in ['channel', 'platform', 'medio', 'canal']): col_medio = c; break
     if not col_medio: col_medio = df_pacing.columns[0]
 
-    # Buscar Columna 'Spend' (Fallo a posición 7 asumiendo estructura estándar de BogoApts/Hyatt)
+    # Buscar Columna 'Spend'
     col_spend = None
     for c in df_pacing.columns:
         if any(k in str(c).lower() for k in ['spend', 'gasto', 'inversión', 'inversion', 'cop']): col_spend = c; break

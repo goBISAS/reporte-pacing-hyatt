@@ -61,8 +61,8 @@ with st.sidebar:
     st.markdown("---")
     mes_seleccionado = st.selectbox("📅 Seleccione el Mes de Reporte:", options=meses_disponibles)
 
-# --- CONEXIÓN DINÁMICA CON LA URL PROPIA DE HYATT ---
-url_base = "https://docs.google.com/spreadsheets/d/1N_z_v5pMiz9g8KszCclg8m_8vXp_C7-A6v9SHe9V6bM/"
+# --- CONEXIÓN DINÁMICA CON LA URL REAL Y VERIFICADA DE HYATT DE LA CAPTURA ---
+url_base = "https://docs.google.com/spreadsheets/d/1Ah5nzWzix7HXOhrLvRBRYRhHsZYX5tULKG9jF7sNer0/"
 url_pacing = get_csv_url_by_sheet(url_base, mes_seleccionado)
 
 try:
@@ -89,11 +89,11 @@ try:
     # 2. CAPTURA DE MATRIZ DE DATOS REALES DE HYATT
     df_datos = df_raw.iloc[idx_header + 1:].copy()
     
-    # Asignación de índices fijos de columnas
-    col_idx_medio = 0  # Columna A: Medio
-    col_idx_camp = 1   # Columna B: Nombre de la campaña
-    col_idx_status = 4 # Columna E: Estado (Activa / Pausada) -> NUEVA IMPLEMENTACIÓN EN HYATT
-    col_idx_spend = 7  # Columna H: Inversión (COP)
+    # Asignación de índices fijos de columnas según tu cuadro real
+    col_idx_medio = 0  # Columna A: Channel
+    col_idx_camp = 1   # Columna B: Campaign
+    col_idx_status = 4 # Columna E: Status (Activa / Pausada / Completada) -> Índice 4 Protegido
+    col_idx_spend = 7  # Columna H: Spend (COP)
     col_idx_res = 14   # Columna O: Platform Conversions
     col_idx_tipo = 15  # Columna P: Official Conversions
     col_idx_cpa = 17   # Columna R: CPA
@@ -123,7 +123,7 @@ try:
         if celda_camp == '' or any(k in celda_camp.lower() for k in ['campaign', 'campaña', 'nombre de la', 'total']):
             continue
             
-        # Extracción e inserción segura de la columna de estado
+        # Extracción segura de la columna de estado (Columna E / Índice 4)
         celda_status = str(row[col_idx_status]).strip() if len(row) > col_idx_status else 'N/D'
         if celda_status == '': celda_status = 'N/D'
         

@@ -92,7 +92,7 @@ try:
     # Asignación de índices fijos de columnas según tu cuadro real
     col_idx_medio = 0  # Columna A: Channel
     col_idx_camp = 1   # Columna B: Campaign
-    col_idx_status = 4 # Columna E: Status (Activa / Pausada / Completada) -> Índice 4 Protegido
+    col_idx_status = 4 # Columna E: Status 
     col_idx_spend = 7  # Columna H: Spend (COP)
     col_idx_res = 14   # Columna O: Platform Conversions
     col_idx_tipo = 15  # Columna P: Official Conversions
@@ -119,11 +119,12 @@ try:
         celda_camp = str(row[col_idx_camp]).strip()
         celda_medio = str(row[col_idx_medio]).strip()
         
-        # Filtros de control para ignorar encabezados residuales y totales de la hoja
-        if celda_camp == '' or any(k in celda_camp.lower() for k in ['campaign', 'campaña', 'nombre de la', 'total']):
+        camp_lower = celda_camp.lower()
+        
+        # NUEVO FILTRO EXACTO: Solo ignora si la celda es exactamente el encabezado, o si incluye la palabra total.
+        if camp_lower == '' or camp_lower in ['campaign', 'campaña', 'nombre de la campaña', 'campaign name'] or 'total' in camp_lower:
             continue
             
-        # Extracción segura de la columna de estado (Columna E / Índice 4)
         celda_status = str(row[col_idx_status]).strip() if len(row) > col_idx_status else 'N/D'
         if celda_status == '': celda_status = 'N/D'
         
@@ -146,49 +147,48 @@ try:
 
     df_limpio = pd.DataFrame(lista_campanas)
 
-    # Relleno hacia abajo inteligente para heredar el Canal (ffill)
-    df_limpio['Medio_Raw'] = df_limpio['Medio_Raw'].replace(['', 'nan', 'NaN'], pd.NA)
-    df_limpio['Medio'] = df_limpio['Medio_Raw'].ffill().fillna('Sin Medio')
+    if not df_limpio.empty:
+        df_limpio['Medio_Raw'] = df_limpio['Medio_Raw'].replace(['', 'nan', 'NaN'], pd.NA)
+        df_limpio['Medio'] = df_limpio['Medio_Raw'].ffill().fillna('Sin Medio')
 
-    # Conversión limpia del gasto
-    df_limpio['Gasto'] = df_limpio['Gasto_Raw'].str.replace(r'[^\d.-]', '', regex=True)
-    df_limpio['Gasto'] = pd.to_numeric(df_limpio['Gasto'], errors='coerce').fillna(0)
+        df_limpio['Gasto'] = df_limpio['Gasto_Raw'].str.replace(r'[^\d.-]', '', regex=True)
+        df_limpio['Gasto'] = pd.to_numeric(df_limpio['Gasto'], errors='coerce').fillna(0)
 
-    # Agrupaciones para gráficos
-    resumen_medios = df_limpio.groupby('Medio')['Gasto'].sum()
-    mapa_medios = {med: f"{med} (${tot:,.0f})" for med, tot in resumen_medios.items()}
-    df_limpio['Medio_Labels'] = df_limpio['Medio'].map(mapa_medios).astype(str)
-    gasto_total_calculado = df_limpio['Gasto'].sum()
+        resumen_medios = df_limpio.groupby('Medio')['Gasto'].sum()
+        mapa_medios = {med: f"{med} (${tot:,.0f})" for med, tot in resumen_medios.items()}
+        df_limpio['Medio_Labels'] = df_limpio['Medio'].map(mapa_medios).astype(str)
+        gasto_total_calculado = df_limpio['Gasto'].sum()
 
     # --- INTERFAZ VISUAL ---
     st.title(f"🏨 Dashboard Gerencial Hyatt: {mes_seleccionado.title()}")
     
-    c1, c2, c3 = st.columns(3)
-    with c1: st.metric("Presupuesto Mensual", f"{presupuesto_mensual}")
-    with c2: st.metric("Inversión Ejecutada", f"${gasto_total_calculado:,.0f}")
-    with c3:
-        if mes_seleccionado == meses_disponibles[0]:
-            st.metric("Día de Medición", f"Día {datetime.now().day}")
+    if not df_limpio.empty:
+        c1, c2, c3 = st.columns(3)
+        with c1: st.metric("Presupuesto Mensual", f"{presupuesto_mensual}")
+        with c2: st.metric("Inversión Ejecutada", f"${gasto_total_calculado:,.0f}")
+        with c3:
+            if mes_seleccionado == meses_disponibles[0]:
+                st.metric("Día de Medición", f"Día {datetime.now().day}")
+            else:
+                st.metric("Estado del Mes", "Cerrado")
+
+        st.success(f"✅ Sincronización exitosa con la pestaña [{mes_seleccionado}] | Último registro: {fecha_update}")
+        st.divider()
+
+        st.header("📊 Distribución por Canal y Objetivo")
+        df_plot = df_limpio[df_limpio['Gasto'] > 0]
+        if not df_plot.empty:
+            fig = px.treemap(df_plot, path=['Medio_Labels', 'Objetivo'], values='Gasto', color='Gasto', color_continuous_scale=['#d6b58e', '#5b3f8e'])
+            fig.update_traces(texttemplate="<b>%{label}</b><br>$%{value:,.0f}", hovertemplate="<b>%{label}</b><br>Inversión: $%{value:,.0f}<extra></extra>", textposition="middle center")
+            fig.update_layout(margin=dict(t=10, l=10, r=10, b=10), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
+            st.plotly_chart(fig, use_container_width=True)
         else:
-            st.metric("Estado del Mes", "Cerrado")
+            st.warning("No se detectan datos de gasto mayores a $0 para graficar en este periodo.")
 
-    st.success(f"✅ Sincronización exitosa con la pestaña [{mes_seleccionado}] | Último registro: {fecha_update}")
-    st.divider()
-
-    # --- VISUALIZACIÓN TREEMAP ---
-    st.header("📊 Distribución por Canal y Objetivo")
-    df_plot = df_limpio[df_limpio['Gasto'] > 0]
-    if not df_plot.empty:
-        fig = px.treemap(df_plot, path=['Medio_Labels', 'Objetivo'], values='Gasto', color='Gasto', color_continuous_scale=['#d6b58e', '#5b3f8e'])
-        fig.update_traces(texttemplate="<b>%{label}</b><br>$%{value:,.0f}", hovertemplate="<b>%{label}</b><br>Inversión: $%{value:,.0f}<extra></extra>", textposition="middle center")
-        fig.update_layout(margin=dict(t=10, l=10, r=10, b=10), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
-        st.plotly_chart(fig, use_container_width=True)
+        with st.expander("📝 Detalle General de Campañas"):
+            st.dataframe(df_limpio[['Medio', 'Campaña', 'Estado', 'Objetivo', 'Resultados', 'CPA']].sort_values(by='Medio'), use_container_width=True, hide_index=True)
     else:
-        st.warning("No se detectan datos de gasto mayores a $0 para graficar en este periodo.")
-
-    # --- TABLA CONTROL CON CAMPO ESTADO ---
-    with st.expander("📝 Detalle General de Campañas"):
-        st.dataframe(df_limpio[['Medio', 'Campaña', 'Estado', 'Objetivo', 'Resultados', 'CPA']].sort_values(by='Medio'), use_container_width=True, hide_index=True)
+        st.warning("No se encontraron campañas válidas para procesar en este mes.")
 
 except Exception as e:
     st.error(f"Error detectado en el procesamiento de datos: {e}")

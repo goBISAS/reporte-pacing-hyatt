@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import urllib.parse
+import re
 
 # CONFIGURACIÓN DE PÁGINA PREMIUM
 st.set_page_config(
@@ -20,6 +21,7 @@ st.markdown("""
     .insight-card { background-color: #1a1a1a; padding: 25px; border-radius: 10px; border-left: 5px solid #d6b58e; margin-bottom: 25px; border-right: 1px solid #333; border-top: 1px solid #333; border-bottom: 1px solid #333; }
     .insight-title { color: #d6b58e; font-size: 1.3rem; font-weight: bold; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; }
     .insight-text { color: #e0e0e0; font-size: 1rem; line-height: 1.6; text-align: justify; }
+    .evidencia-img { max-width: 100%; border-radius: 8px; border: 1px solid #333; margin-top: 15px; margin-bottom: 5px; display: block; margin-left: auto; margin-right: auto; }
     .todo-section { background-color: #241c30; padding: 18px; border-radius: 8px; margin-top: 20px; border-left: 5px solid #8e6bc2; }
     .todo-title { color: #bca0e8; font-weight: 700; margin-bottom: 8px; font-size: 1.1rem; }
     </style>
@@ -32,6 +34,20 @@ def get_csv_url_by_sheet(url, sheet_name):
         return f"https://docs.google.com/spreadsheets/d/{id_publicacion}/gviz/tq?tqx=out:csv&sheet={sheet_enc}"
     except:
         return url
+
+def convert_drive_link(url):
+    """Convierte un enlace estándar de Google Drive a un enlace directo de imagen"""
+    if pd.isna(url) or url.strip() == "":
+        return ""
+    url = url.strip()
+    if "drive.google.com" in url:
+        # Extraer el ID único del archivo con expresiones regulares
+        match = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
+        if match:
+            file_id = match.group(1)
+            # Retornar el formato directo
+            return f"https://drive.google.com/uc?export=view&id={file_id}"
+    return url
 
 # --- UI HEADER ---
 st.title("📈 Reportes de Rendimiento y Optimización")
@@ -85,13 +101,24 @@ try:
                     mes = row['Mes']
                     ano = row['Año'].strip()
                     observacion = row['Observación'].strip()
+                    evidencia = row['Evidencia'].strip()
                     todo = row['To_do'].strip()
 
-                    # Construcción de la tarjeta HTML inyectada SIN sangrías para evitar bloque de código
+                    # Transformación del enlace de Drive
+                    evidencia_directa = convert_drive_link(evidencia)
+
+                    # Construcción de la tarjeta HTML inyectada SIN sangrías
                     html_card = f"""<div class="insight-card">
 <div class="insight-title">{medio} | {mes} {ano}</div>
 <div class="insight-text"><strong>Análisis:</strong><br>{observacion}</div>"""
                     
+                    # Añadir la imagen de evidencia si hay una URL válida o procesada
+                    if evidencia_directa.startswith("http"):
+                        html_card += f"""
+<div>
+<img src="{evidencia_directa}" class="evidencia-img" alt="Evidencia de la campaña">
+</div>"""
+
                     # Añadir la sección To-Do solo si existe texto
                     if todo and todo.lower() not in ['nan', 'none', '-']:
                         html_card += f"""

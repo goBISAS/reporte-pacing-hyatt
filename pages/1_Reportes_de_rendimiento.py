@@ -36,7 +36,7 @@ def get_csv_url_by_sheet(url, sheet_name):
         return url
 
 def convert_drive_link(url):
-    """Convierte un enlace estándar de Google Drive a un enlace directo de imagen"""
+    """Convierte un enlace estándar de Google Drive a un enlace de miniatura HQ permitido para incrustar"""
     if pd.isna(url) or url.strip() == "":
         return ""
     url = url.strip()
@@ -45,8 +45,8 @@ def convert_drive_link(url):
         match = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
         if match:
             file_id = match.group(1)
-            # Retornar el formato directo
-            return f"https://drive.google.com/uc?export=view&id={file_id}"
+            # Nuevo método compatible con las políticas actuales de Google Drive
+            return f"https://drive.google.com/thumbnail?id={file_id}&sz=w1000"
     return url
 
 # --- UI HEADER ---
@@ -104,7 +104,7 @@ try:
                     evidencia = row['Evidencia'].strip()
                     todo = row['To_do'].strip()
 
-                    # Transformación del enlace de Drive
+                    # Transformación del enlace de Drive con el nuevo método
                     evidencia_directa = convert_drive_link(evidencia)
 
                     # Construcción de la tarjeta HTML inyectada SIN sangrías

@@ -55,13 +55,18 @@ try:
         df_clean = df_raw[(df_raw['Observación'] != '') & (df_raw['Observación'].str.lower() != 'observación')].copy()
         
         if not df_clean.empty:
+            
+            # --- NORMALIZACIÓN DE TEXTOS PARA EVITAR DUPLICADOS ---
+            df_clean['Mes'] = df_clean['Mes'].astype(str).str.strip().str.capitalize()
+            df_clean['Medio'] = df_clean['Medio'].astype(str).str.strip()
+
             # --- FILTROS DE INTERFAZ ---
             c1, c2 = st.columns(2)
             with c1:
-                lista_meses = [m for m in df_clean['Mes'].unique() if m.strip() != '']
+                lista_meses = sorted([m for m in df_clean['Mes'].unique() if m != ''])
                 mes_filtro = st.selectbox("📅 Filtrar por Mes:", ["Todos"] + lista_meses)
             with c2:
-                lista_medios = [m for m in df_clean['Medio'].unique() if m.strip() != '']
+                lista_medios = sorted([m for m in df_clean['Medio'].unique() if m != ''])
                 medio_filtro = st.selectbox("🎯 Filtrar por Medio:", ["Todos"] + lista_medios)
             
             # --- APLICACIÓN DE FILTROS ---
@@ -76,8 +81,8 @@ try:
             # --- RENDERIZADO VISUAL ---
             if not df_filtered.empty:
                 for index, row in df_filtered.iterrows():
-                    medio = row['Medio'].strip() if row['Medio'].strip() else "General"
-                    mes = row['Mes'].strip()
+                    medio = row['Medio'] if row['Medio'] else "General"
+                    mes = row['Mes']
                     ano = row['Año'].strip()
                     observacion = row['Observación'].strip()
                     todo = row['To_do'].strip()

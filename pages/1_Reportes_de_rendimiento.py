@@ -82,25 +82,18 @@ try:
                     observacion = row['Observación'].strip()
                     todo = row['To_do'].strip()
 
-                    # Construcción de la tarjeta HTML inyectada
-                    html_card = f"""
-                    <div class="insight-card">
-                        <div class="insight-title">
-                            {medio} | {mes} {ano}
-                        </div>
-                        <div class="insight-text">
-                            <strong>Análisis:</strong><br>{observacion}
-                        </div>
-                    """
+                    # Construcción de la tarjeta HTML inyectada SIN sangrías para evitar bloque de código
+                    html_card = f"""<div class="insight-card">
+<div class="insight-title">{medio} | {mes} {ano}</div>
+<div class="insight-text"><strong>Análisis:</strong><br>{observacion}</div>"""
                     
                     # Añadir la sección To-Do solo si existe texto
                     if todo and todo.lower() not in ['nan', 'none', '-']:
                         html_card += f"""
-                        <div class="todo-section">
-                            <div class="todo-title">⚡ Siguientes Pasos (To Do):</div>
-                            <div class="insight-text">{todo}</div>
-                        </div>
-                        """
+<div class="todo-section">
+<div class="todo-title">⚡ Siguientes Pasos (To Do):</div>
+<div class="insight-text">{todo}</div>
+</div>"""
                     
                     html_card += "</div>"
                     st.markdown(html_card, unsafe_allow_html=True)

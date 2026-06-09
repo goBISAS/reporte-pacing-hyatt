@@ -21,7 +21,13 @@ st.markdown("""
     .insight-card { background-color: #1a1a1a; padding: 25px; border-radius: 10px; border-left: 5px solid #d6b58e; margin-bottom: 25px; border-right: 1px solid #333; border-top: 1px solid #333; border-bottom: 1px solid #333; }
     .insight-title { color: #d6b58e; font-size: 1.3rem; font-weight: bold; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; }
     .insight-text { color: #e0e0e0; font-size: 1rem; line-height: 1.6; text-align: justify; }
-    .evidencia-img { max-width: 100%; border-radius: 8px; border: 1px solid #333; margin-top: 15px; margin-bottom: 5px; display: block; margin-left: auto; margin-right: auto; }
+    .evidencia-container { text-align: center; margin-top: 15px; margin-bottom: 15px; }
+    .evidencia-img { max-width: 100%; border-radius: 8px; border: 1px solid #333; display: block; margin-left: auto; margin-right: auto; margin-bottom: 10px; }
+    
+    /* Botón personalizado estilo goBIG para abrir Drive */
+    .drive-btn { display: inline-block; padding: 10px 20px; background-color: #111111; color: #d6b58e !important; text-decoration: none !important; font-size: 0.9rem; font-weight: 600; border-radius: 5px; border: 1px solid #d6b58e; transition: all 0.3s ease; }
+    .drive-btn:hover { background-color: #d6b58e; color: #111111 !important; }
+    
     .todo-section { background-color: #241c30; padding: 18px; border-radius: 8px; margin-top: 20px; border-left: 5px solid #8e6bc2; }
     .todo-title { color: #bca0e8; font-weight: 700; margin-bottom: 8px; font-size: 1.1rem; }
     </style>
@@ -41,11 +47,9 @@ def convert_drive_link(url):
         return ""
     url = url.strip()
     if "drive.google.com" in url:
-        # Extraer el ID único del archivo con expresiones regulares
         match = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
         if match:
             file_id = match.group(1)
-            # Nuevo método compatible con las políticas actuales de Google Drive
             return f"https://drive.google.com/thumbnail?id={file_id}&sz=w1000"
     return url
 
@@ -64,15 +68,14 @@ try:
     
     # 2. Validación de columnas mínimas esperadas (Año, Mes, Medio, Observación, Evidencia, To do)
     if len(df_raw.columns) >= 6:
-        # Renombramos explícitamente las primeras 6 columnas para asegurar el mapeo correcto
         df_raw.columns = ["Año", "Mes", "Medio", "Observación", "Evidencia", "To_do"] + list(df_raw.columns[6:])
         
-        # 3. Limpieza de datos (Omitir filas vacías o encabezados repetidos)
+        # 3. Limpieza de datos
         df_clean = df_raw[(df_raw['Observación'] != '') & (df_raw['Observación'].str.lower() != 'observación')].copy()
         
         if not df_clean.empty:
             
-            # --- NORMALIZACIÓN DE TEXTOS PARA EVITAR DUPLICADOS ---
+            # --- NORMALIZACIÓN DE TEXTOS ---
             df_clean['Mes'] = df_clean['Mes'].astype(str).str.strip().str.capitalize()
             df_clean['Medio'] = df_clean['Medio'].astype(str).str.strip()
 
@@ -101,22 +104,23 @@ try:
                     mes = row['Mes']
                     ano = row['Año'].strip()
                     observacion = row['Observación'].strip()
-                    evidencia = row['Evidencia'].strip()
+                    evidencia_original = row['Evidencia'].strip()
                     todo = row['To_do'].strip()
 
-                    # Transformación del enlace de Drive con el nuevo método
-                    evidencia_directa = convert_drive_link(evidencia)
+                    # Transformación del enlace para incrustar la miniatura
+                    evidencia_incrustada = convert_drive_link(evidencia_original)
 
                     # Construcción de la tarjeta HTML inyectada SIN sangrías
                     html_card = f"""<div class="insight-card">
 <div class="insight-title">{medio} | {mes} {ano}</div>
 <div class="insight-text"><strong>Análisis:</strong><br>{observacion}</div>"""
                     
-                    # Añadir la imagen de evidencia si hay una URL válida o procesada
-                    if evidencia_directa.startswith("http"):
+                    # Añadir contenedor de evidencia (Imagen + Botón de respaldo)
+                    if evidencia_original.startswith("http"):
                         html_card += f"""
-<div>
-<img src="{evidencia_directa}" class="evidencia-img" alt="Evidencia de la campaña">
+<div class="evidencia-container">
+<img src="{evidencia_incrustada}" class="evidencia-img" alt="Evidencia de la campaña">
+<a href="{evidencia_original}" target="_blank" class="drive-btn">🔗 Abrir evidencia en Google Drive</a>
 </div>"""
 
                     # Añadir la sección To-Do solo si existe texto
